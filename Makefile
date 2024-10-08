@@ -5,11 +5,11 @@ all:
 	${MAKE} client
 
 server:
-	gcc server/main.c -o chatting_server
+	gcc server/main.c -o serverb
 
 client:
-	gcc client/main.c -o chatting_client -lX11
+	gcc client/main.c -o clientb -lX11 -lGL
 
 run:
-	./chatting_server &
-	./chatting_client &
+	./serverb &
+	./clientb &
