@@ -1,67 +1,84 @@
+#include <GL/gl.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+#include <X11/X.h>
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
-#include <stdio.h>
+
+#include <GL/glx.h>
+
+struct Glob {
+  Display *disp;
+  Window win;
+  GLXContext gl_context;
+};
+
+void create_gl_context(struct Glob *glob) {
+  int screen_id = DefaultScreen(glob->disp);
+
+  int attribs[] = {GLX_RGBA, GLX_DEPTH_SIZE, 24, GLX_DOUBLEBUFFER, None};
+
+  XVisualInfo *visual_info = glXChooseVisual(glob->disp, screen_id, attribs);
+  if (!visual_info) {
+    fprintf(stderr, "Couldnt find suitable Opengl visual\n");
+  }
+
+  glob->gl_context = glXCreateContext(glob->disp, visual_info, NULL, GL_TRUE);
+  if (!glob->gl_context) {
+    fprintf(stderr, "Could not create OpenGL Context\n");
+  }
+}
 
 int main(int argc, char *argv[]) {
   printf("Chatting client started\n");
 
-  Display *MainDisplay = XOpenDisplay(0);
-  Window RootWindow = XDefaultRootWindow(MainDisplay);
+  struct Glob *glob = malloc(sizeof(struct Glob));
 
-  int DefaultScreen = DefaultScreen(MainDisplay);
-  GC Context = XDefaultGC(MainDisplay, DefaultScreen);
-
-  int WindowX = 0;
-  int WindowY = 0;
-  int WindowWidth = 800;
-  int WindowHeight = 600;
-  int BorderWidth = 0;
-  int WindowDepth = CopyFromParent;
-  int WindowClass = CopyFromParent;
-  Visual *WindowVisual = CopyFromParent;
-
-  int AttributeValueMask = CWBackPixel | CWEventMask;
-  XSetWindowAttributes WindowAttributes = {};
-  WindowAttributes.background_pixel = 0xffffffff;
-  WindowAttributes.event_mask =
-      StructureNotifyMask | KeyPressMask | KeyReleaseMask | ExposureMask;
-
-  Window MainWindow =
-      XCreateWindow(MainDisplay, RootWindow, WindowX, WindowY, WindowWidth,
-                    WindowHeight, BorderWidth, WindowDepth, WindowClass,
-                    WindowVisual, AttributeValueMask, &WindowAttributes);
-
-  XMapWindow(MainDisplay, MainWindow);
-
-  Atom WM_DELETE_WINDOW = XInternAtom(MainDisplay, "WM_DELETE_WINDOW", False);
-  if (!XSetWMProtocols(MainDisplay, MainWindow, &WM_DELETE_WINDOW, 1)) {
-    printf("Couldn't register WM_DELETE_WINDOW property \n");
+  glob->disp = XOpenDisplay(0);
+  if (!glob->disp) {
+    fprintf(stderr, "Failed to connect to X display\n");
   }
 
-  int IsWindowOpen = 1;
-  while (IsWindowOpen) {
-    XEvent GeneralEvent = {};
+  glob->win = XCreateSimpleWindow(glob->disp, XDefaultRootWindow(glob->disp), 0,
+                                  0, 800, 500, 0, 0, 0);
+  if (!glob->win) {
+    fprintf(stderr, "Failed to create X window\n");
+  }
 
-    XNextEvent(MainDisplay, &GeneralEvent);
+  XSelectInput(glob->disp, glob->win, ExposureMask);
+  XMapWindow(glob->disp, glob->win);
 
-    switch (GeneralEvent.type) {
-    case KeyPress:
-    case KeyRelease: {
-      XKeyPressedEvent *Event = (XKeyPressedEvent *)&GeneralEvent;
-      if (Event->keycode == XKeysymToKeycode(MainDisplay, XK_Escape)) {
-        IsWindowOpen = 0;
+  Atom atom_delete_window = XInternAtom(glob->disp, "WM_DELETE_WINDOW", True);
+  XSetWMProtocols(glob->disp, glob->win, &atom_delete_window, 1);
+
+  XFlush(glob->disp);
+
+  create_gl_context(glob);
+  glXMakeCurrent(glob->disp, glob->win, glob->gl_context);
+
+  XEvent ev;
+  while (1) {
+    XNextEvent(glob->disp, &ev);
+
+    if (ev.type == ClientMessage) {
+      if (ev.xclient.data.l[0] == atom_delete_window) {
+        break;
       }
-    } break;
-
-    case ClientMessage: {
-      XClientMessageEvent *Event = (XClientMessageEvent *)&GeneralEvent;
-      if ((Atom)Event->data.l[0] == WM_DELETE_WINDOW) {
-        XDestroyWindow(MainDisplay, MainWindow);
-        IsWindowOpen = 0;
-      }
-    } break;
     }
-    XClearWindow(MainDisplay, MainWindow);
+    if (ev.type == Expose) {
+      glClearColor(1.0f, 0.0f, 0.0f, 1.0f);
+      glClear(GL_COLOR_BUFFER_BIT);
+
+      glXSwapBuffers(glob->disp, glob->win);
+    }
   }
+
+  glXDestroyContext(glob->disp, glob->gl_context);
+  XDestroyWindow(glob->disp, glob->win);
+  XCloseDisplay(glob->disp);
+
+  free(glob);
+
   return 0;
 }
