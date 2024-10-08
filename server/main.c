@@ -1,7 +1,7 @@
 #include <stdio.h>
 
 int main(int argc, char *argv[]) {
-  printf("Hello World from server\n");
+  printf("Chatting server started\n");
 
   return 0;
 }
